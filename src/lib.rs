@@ -5,6 +5,7 @@
 //! - #include
 //! - #define and #undef
 //! - #ifdef, #ifndef, #elifdef, #elifndef, #else and #endif
+//! - #comment
 //! - #exec for running commands
 //! - #in and #endin for giving input to commands
 //!
@@ -39,6 +40,10 @@
 //! The #ifdef, #ifndef, #elifdef, #elifndef, #else and #endif commands work exactly as you expect.
 //! I did not add generic #if commands to gpp, as it would make it much more complex and require a
 //! lot of parsing, and most of the time these are all you need anyway.
+//!
+//! ## Comments
+//!
+//! The #comment command is a single-line comment.
 //!
 //! ## #exec, #in and #endin
 //!
@@ -109,6 +114,7 @@
 //! #ifdef Line
 //! #undef Line
 //! #endif
+//! #comment Ignored
 //! Line Five", &mut context).unwrap(), "
 //! Row Four
 //! Line Five
@@ -378,6 +384,10 @@ fn process_endif(line: &str, context: &mut Context) -> Result<String, Error> {
     Ok(String::new())
 }
 
+fn process_comment(_line: &str, _context: &mut Context) -> Result<String, Error> {
+    Ok(String::new())
+}
+
 #[derive(Clone, Copy)]
 struct Command {
     name: &'static str,
@@ -458,6 +468,12 @@ const COMMANDS: &[Command] = &[
         requires_exec: false,
         ignored_by_if: true,
         execute: process_endif,
+    },
+    Command {
+        name: "comment",
+        requires_exec: false,
+        ignored_by_if: false,
+        execute: process_comment,
     },
 ];
 
