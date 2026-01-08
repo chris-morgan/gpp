@@ -6,10 +6,10 @@ fn substitution() {
     assert_eq!(crate::process_str("Foo", &mut context).unwrap(), "Bar\n");
     assert_eq!(
         crate::process_str("AFooB", &mut context).unwrap(),
-        "AFooB\n"
+        "ABarB\n"
     );
-    assert_eq!(crate::process_str("Foo_", &mut context).unwrap(), "Foo_\n");
-    assert_eq!(crate::process_str("_Foo", &mut context).unwrap(), "_Foo\n");
+    assert_eq!(crate::process_str("Foo_", &mut context).unwrap(), "Bar_\n");
+    assert_eq!(crate::process_str("_Foo", &mut context).unwrap(), "_Bar\n");
     assert_eq!(
         crate::process_str("One Foo Two", &mut context).unwrap(),
         "One Bar Two\n"

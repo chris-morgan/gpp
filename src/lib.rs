@@ -477,10 +477,6 @@ const COMMANDS: &[Command] = &[
     },
 ];
 
-fn is_word_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
-}
-
 /// Finds the next macro name word in the line, and replaces it with its value, returning None when
 /// it can't find a macro.
 fn replace_next_macro(line: &str, macros: &HashMap<String, String>) -> Option<String> {
@@ -489,11 +485,6 @@ fn replace_next_macro(line: &str, macros: &HashMap<String, String>) -> Option<St
         let before = parts.next().unwrap();
         let after = parts.next()?;
 
-        if before.chars().next_back().map_or(false, is_word_char)
-            || after.chars().next().map_or(false, is_word_char)
-        {
-            return None;
-        }
         let mut new_line = String::with_capacity(before.len() + value.len() + after.len());
         new_line.push_str(before);
         new_line.push_str(value);
