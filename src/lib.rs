@@ -124,6 +124,7 @@
 #[cfg(test)]
 mod tests;
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error;
 use std::fmt;
@@ -284,8 +285,8 @@ fn shell(cmd: &str) -> SystemCommand {
     command
 }
 
-fn process_exec(line: &str, _: &mut Context) -> Result<String, Error> {
-    let output = shell(line).output()?;
+fn process_exec(line: &str, context: &mut Context) -> Result<String, Error> {
+    let output = shell(&replace_macros(line.into(), &context.macros)).output()?;
     if !output.status.success() {
         return Err(Error::ChildFailed {
             status: output.status,
@@ -295,7 +296,7 @@ fn process_exec(line: &str, _: &mut Context) -> Result<String, Error> {
 }
 
 fn process_in(line: &str, context: &mut Context) -> Result<String, Error> {
-    let child = shell(line)
+    let child = shell(&replace_macros(line.into(), &context.macros))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
@@ -321,7 +322,7 @@ fn process_endin(line: &str, context: &mut Context) -> Result<String, Error> {
 }
 
 fn process_include(line: &str, context: &mut Context) -> Result<String, Error> {
-    process_file(line, context)
+    process_file(&replace_macros(line.into(), &context.macros), context)
 }
 
 fn process_define(line: &str, context: &mut Context) -> Result<String, Error> {
@@ -329,7 +330,7 @@ fn process_define(line: &str, context: &mut Context) -> Result<String, Error> {
     let name = parts.next().unwrap();
     let value = parts.next().unwrap_or("");
 
-    context.macros.insert(name.to_owned(), value.to_owned());
+    context.macros.insert(name.to_owned(), replace_macros(value.into(), &context.macros).into_owned());
     Ok(String::new())
 }
 
@@ -477,14 +478,14 @@ const COMMANDS: &[Command] = &[
     },
 ];
 
-fn replace_macros<'a>(mut text: String, macros: &HashMap<String, String>) -> String {
+fn replace_macros<'a>(mut text: Cow<'a, str>, macros: &HashMap<String, String>) -> Cow<'a, str> {
     'start: loop {
         for (name, value) in macros {
             let range = match text.match_indices(name).next() {
                 Some((start, match_str)) => start..start + match_str.len(),
                 None => continue,
             };
-            text.replace_range(range, value);
+            text.to_mut().replace_range(range, value);
             // I look forward to ditching the loop and writing `become replace_macros(text, macros)`.
             continue 'start;
         }
@@ -545,17 +546,10 @@ pub fn process_line(line: &str, context: &mut Context) -> Result<String, Error> 
     };
 
     let line = match line {
-        Line::Text(_)
-        | Line::Command(
-            Command {
-                ignored_by_if: false,
-                ..
-            },
-            _,
-        ) if context.inactive_stack > 0 => String::new(),
-        Line::Text(text) => replace_macros(format!("{}\n", text), &context.macros),
-
-        Line::Command(command, content) => (command.execute)(content, context)?,
+        Line::Text(_) | Line::Command(Command { ignored_by_if: false, .. }, _)
+            if context.inactive_stack > 0 => "".into(),
+        Line::Text(text) => replace_macros(format!("{}\n", text).into(), &context.macros),
+        Line::Command(command, content) => (command.execute)(content, context)?.into(),
     };
 
     Ok(if let Some(child) = context.in_stack.last_mut() {
@@ -563,7 +557,7 @@ pub fn process_line(line: &str, context: &mut Context) -> Result<String, Error> 
         input.write_all(line.as_bytes())?;
         String::new()
     } else {
-        line
+        line.into_owned()
     })
 }
 
