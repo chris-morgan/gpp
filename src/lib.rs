@@ -210,6 +210,8 @@ pub enum Error {
     InvalidCommand { command_name: String },
     /// Too many parameters were given for a command (for example using #endif with parameters).
     TooManyParameters { command: &'static str },
+    /// Not enough parameters were given for a command (for example using #ifeq with only one parameter).
+    NotEnoughParameters { command: &'static str },
     /// There was an unexpected command; currently only generated for unexpected #endins.
     UnexpectedCommand { command: &'static str },
     /// The child process for an #exec exited with a nonzero status.
@@ -236,6 +238,9 @@ impl fmt::Display for Error {
             }
             Error::TooManyParameters { command } => {
                 write!(f, "Too many parameters for #{}", command)
+            }
+            Error::NotEnoughParameters { command } => {
+                write!(f, "Not enough parameters for #{}", command)
             }
             Error::UnexpectedCommand { command } => write!(f, "Unexpected command #{}", command),
             Error::ChildFailed { status } => write!(f, "Child failed with exit code {}", status),
@@ -339,7 +344,10 @@ fn process_undef(line: &str, context: &mut Context) -> Result<String, Error> {
     Ok(String::new())
 }
 
-fn process_ifdef(line: &str, context: &mut Context, inverted: bool) -> Result<String, Error> {
+fn process_ifdef(line: &str, context: &mut Context, inverted: bool, command: &'static str) -> Result<String, Error> {
+    if line.is_empty() {
+        return Err(Error::NotEnoughParameters { command });
+    }
     if context.inactive_stack > 0 {
         context.inactive_stack += 1;
     } else if context.macros.contains_key(line) == inverted {
@@ -351,12 +359,45 @@ fn process_ifdef(line: &str, context: &mut Context, inverted: bool) -> Result<St
     Ok(String::new())
 }
 
-fn process_elifdef(line: &str, context: &mut Context, inverted: bool) -> Result<String, Error> {
+fn process_ifeq(line: &str, context: &mut Context, inverted: bool, command: &'static str) -> Result<String, Error> {
+    let Some((name, value)) = line.split_once(' ') else {
+        return Err(Error::TooManyParameters { command })
+    };
+    if context.inactive_stack > 0 {
+        context.inactive_stack += 1;
+    } else if (context.macros.get(name).map(|s| Cow::Borrowed(&**s)) == Some(replace_macros(value.into(), &context.macros))) == inverted {
+        context.inactive_stack = 1;
+        context.used_if = false;
+    } else {
+        context.used_if = true;
+    }
+    Ok(String::new())
+}
+
+fn process_elifdef(line: &str, context: &mut Context, inverted: bool, command: &'static str) -> Result<String, Error> {
+    if line.is_empty() {
+        return Err(Error::NotEnoughParameters { command });
+    }
     if context.inactive_stack == 0 {
         context.inactive_stack = 1;
     } else if context.inactive_stack == 1
         && !context.used_if
         && context.macros.contains_key(line) != inverted
+    {
+        context.inactive_stack = 0;
+    }
+    Ok(String::new())
+}
+
+fn process_elifeq(line: &str, context: &mut Context, inverted: bool, command: &'static str) -> Result<String, Error> {
+    let Some((name, value)) = line.split_once(' ') else {
+        return Err(Error::TooManyParameters { command })
+    };
+    if context.inactive_stack == 0 {
+        context.inactive_stack = 1;
+    } else if context.inactive_stack == 1
+        && !context.used_if
+        && (context.macros.get(name).map(|s| Cow::Borrowed(&**s)) == Some(replace_macros(value.into(), &context.macros))) != inverted
     {
         context.inactive_stack = 0;
     }
@@ -438,25 +479,49 @@ const COMMANDS: &[Command] = &[
         name: "ifdef",
         requires_exec: false,
         ignored_by_if: true,
-        execute: |line, context| process_ifdef(line, context, false),
+        execute: |line, context| process_ifdef(line, context, false, "ifdef"),
     },
     Command {
         name: "ifndef",
         requires_exec: false,
         ignored_by_if: true,
-        execute: |line, context| process_ifdef(line, context, true),
+        execute: |line, context| process_ifdef(line, context, true, "ifndef"),
+    },
+    Command {
+        name: "ifeq",
+        requires_exec: false,
+        ignored_by_if: true,
+        execute: |line, context| process_ifeq(line, context, false, "ifeq"),
+    },
+    Command {
+        name: "ifne",
+        requires_exec: false,
+        ignored_by_if: true,
+        execute: |line, context| process_ifeq(line, context, true, "ifne"),
     },
     Command {
         name: "elifdef",
         requires_exec: false,
         ignored_by_if: true,
-        execute: |line, context| process_elifdef(line, context, false),
+        execute: |line, context| process_elifdef(line, context, false, "elifdef"),
     },
     Command {
         name: "elifndef",
         requires_exec: false,
         ignored_by_if: true,
-        execute: |line, context| process_elifdef(line, context, true),
+        execute: |line, context| process_elifdef(line, context, true, "elifndef"),
+    },
+    Command {
+        name: "elifeq",
+        requires_exec: false,
+        ignored_by_if: true,
+        execute: |line, context| process_elifeq(line, context, false, "elifeq"),
+    },
+    Command {
+        name: "elifne",
+        requires_exec: false,
+        ignored_by_if: true,
+        execute: |line, context| process_elifeq(line, context, true, "elifne"),
     },
     Command {
         name: "else",
