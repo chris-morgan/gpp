@@ -505,12 +505,10 @@ fn replace_next_macro(line: &str, macros: &HashMap<String, String>) -> Option<St
 /// Process a string line of input.
 ///
 /// This is the smallest processing function, and all other processing functions are wrappers
-/// around it. It only processes singular lines, and will not work on any string that contains
-/// newlines unless that newline is at the end.
+/// around it. It only processes singular lines without trailing newlines.
 ///
 /// It returns a Result<String, Error>. If an error occurs, then the Result will be that error.
-/// Otherwise, the returned string is the output. If the input did not contain a newline at the
-/// end, then this function will add it.
+/// Otherwise, the returned string is the output. The returned string will contain a trailing `\n`.
 ///
 /// # Examples
 ///
@@ -527,11 +525,6 @@ fn replace_next_macro(line: &str, macros: &HashMap<String, String>) -> Option<St
 /// assert_eq!(context.macros.get("Foo").unwrap(), "Bar");
 /// ```
 pub fn process_line(line: &str, context: &mut Context) -> Result<String, Error> {
-    let line = line
-        .strip_suffix("\r\n")
-        .or_else(|| line.strip_suffix('\n'))
-        .unwrap_or(line);
-
     enum Line<'a> {
         Text(&'a str),
         Command(Command, &'a str),
