@@ -477,20 +477,19 @@ const COMMANDS: &[Command] = &[
     },
 ];
 
-/// Finds the next macro name word in the line, and replaces it with its value, returning None when
-/// it can't find a macro.
-fn replace_next_macro(line: &str, macros: &HashMap<String, String>) -> Option<String> {
-    macros.iter().find_map(|(name, value)| {
-        let mut parts = line.splitn(2, name);
-        let before = parts.next().unwrap();
-        let after = parts.next()?;
-
-        let mut new_line = String::with_capacity(before.len() + value.len() + after.len());
-        new_line.push_str(before);
-        new_line.push_str(value);
-        new_line.push_str(after);
-        Some(new_line)
-    })
+fn replace_macros<'a>(mut text: String, macros: &HashMap<String, String>) -> String {
+    'start: loop {
+        for (name, value) in macros {
+            let range = match text.match_indices(name).next() {
+                Some((start, match_str)) => start..start + match_str.len(),
+                None => continue,
+            };
+            text.replace_range(range, value);
+            // I look forward to ditching the loop and writing `become replace_macros(text, macros)`.
+            continue 'start;
+        }
+        return text;
+    }
 }
 
 /// Process a string line of input.
@@ -554,15 +553,8 @@ pub fn process_line(line: &str, context: &mut Context) -> Result<String, Error> 
             },
             _,
         ) if context.inactive_stack > 0 => String::new(),
-        Line::Text(text) => {
-            let mut line = format!("{}\n", text);
+        Line::Text(text) => replace_macros(format!("{}\n", text), &context.macros),
 
-            while let Some(s) = replace_next_macro(&line, &context.macros) {
-                line = s;
-            }
-
-            line
-        }
         Line::Command(command, content) => (command.execute)(content, context)?,
     };
 
